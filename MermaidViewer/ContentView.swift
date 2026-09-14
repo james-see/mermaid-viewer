@@ -31,7 +31,7 @@ struct MermaidWebView: NSViewRepresentable {
     let source: String
     let theme: String
     let zoomLevel: Double
-    let fitMode: Bool  // true = auto-fit, false = manual zoom
+    let fitMode: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -39,24 +39,33 @@ struct MermaidWebView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.userContentController = WKUserContentController()
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsMagnification = true
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
+        context.coordinator.lastSource = source
+        context.coordinator.lastTheme = theme
         loadHTML(webView: webView)
         return webView
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        // Only reload HTML if source or theme changed
-        if context.coordinator.lastSource != source || context.coordinator.lastTheme != theme {
+        let sourceChanged = context.coordinator.lastSource != source
+        let themeChanged = context.coordinator.lastTheme != theme
+
+        if sourceChanged || themeChanged {
             context.coordinator.lastSource = source
             context.coordinator.lastTheme = theme
+            context.coordinator.pendingFit = fitMode
             loadHTML(webView: webView)
+            return
+        }
+
+        // No reload — just apply zoom
+        if fitMode {
+            context.coordinator.applyAutoFit(webView: webView)
         } else {
-            // Just apply zoom without reloading
-            applyZoom(webView: webView, coordinator: context.coordinator)
+            webView.magnification = zoomLevel
         }
     }
 
@@ -65,14 +74,15 @@ struct MermaidWebView: NSViewRepresentable {
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+        let bg = theme == "dark" ? "#1e1e1e" : "#fff"
         let html = """
         <!DOCTYPE html>
         <html>
         <head>
         <meta charset="utf-8">
         <style>
-        body { margin: 0; padding: 0; background: \(theme == "dark" ? "#1e1e1e" : "#fff"); }
-        #diagram { display: flex; justify-content: center; align-items: flex-start; padding: 0; }
+        body { margin: 0; padding: 0; background: \(bg); }
+        #diagram { display: flex; justify-content: center; align-items: flex-start; }
         #diagram svg { max-width: none; height: auto; }
         #error { color: #d33; font-family: monospace; white-space: pre-wrap; max-width: 800px; padding: 20px; }
         </style>
@@ -96,9 +106,35 @@ struct MermaidWebView: NSViewRepresentable {
         webView.loadHTMLString(html, baseURL: nil)
     }
 
-    private func applyZoom(webView: WKWebView, coordinator: Coordinator) {
-        if fitMode {
-            // Auto-fit: calculate zoom from actual SVG size vs webView size
+    // MARK: - Coordinator
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        weak var webView: WKWebView?
+        var lastSource: String = ""
+        var lastTheme: String = ""
+        var pendingFit: Bool = false
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // After page loads, wait for Mermaid to render SVG, then auto-fit
+            waitForRender(webView: webView, attempts: 0)
+        }
+
+        private func waitForRender(webView: WKWebView, attempts: Int) {
+            if attempts > 50 { return }  // ~10s timeout
+            webView.evaluateJavaScript("document.querySelector('#diagram svg') !== null") { result, _ in
+                if let ready = result as? Bool, ready {
+                    if self.pendingFit {
+                        self.applyAutoFit(webView: webView)
+                    }
+                } else {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        self.waitForRender(webView: webView, attempts: attempts + 1)
+                    }
+                }
+            }
+        }
+
+        func applyAutoFit(webView: WKWebView) {
             let js = """
             (function() {
                 var svg = document.querySelector('#diagram svg');
@@ -121,41 +157,10 @@ struct MermaidWebView: NSViewRepresentable {
 
                 let scaleX = viewW / svgW
                 let scaleY = viewH / svgH
-                let fitZoom = min(scaleX, scaleY) * 0.95  // 5% padding
+                let fitZoom = min(scaleX, scaleY) * 0.95
 
                 DispatchQueue.main.async {
                     webView.magnification = max(0.1, fitZoom)
-                }
-            }
-        } else {
-            webView.magnification = zoomLevel
-        }
-    }
-
-    class Coordinator: NSObject, WKNavigationDelegate {
-        weak var webView: WKWebView?
-        var lastSource: String = ""
-        var lastTheme: String = ""
-
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            // Wait for Mermaid to render the SVG
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                self.checkRendered(webView: webView)
-            }
-        }
-
-        private func checkRendered(webView: WKWebView) {
-            webView.evaluateJavaScript("document.querySelector('#diagram svg') !== null") { result, _ in
-                if let rendered = result as? Bool, rendered {
-                    // SVG is ready, notify SwiftUI to apply zoom
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        NotificationCenter.default.post(name: NSNotification.Name("MermaidRendered"), object: nil)
-                    }
-                } else {
-                    // Not yet rendered, retry
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        self.checkRendered(webView: webView)
-                    }
                 }
             }
         }
@@ -172,13 +177,11 @@ struct ContentView: View {
     @State private var exportError: String?
     @State private var zoomLevel: Double = 1.0
     @State private var fitMode: Bool = true
-    @State private var renderToken: Int = 0  // bumps to trigger re-evaluation after render
 
     var body: some View {
         VStack(spacing: 0) {
             // Toolbar
             HStack(spacing: 12) {
-                // Theme
                 Picker("Theme", selection: $theme) {
                     Text("Light").tag("default")
                     Text("Dark").tag("dark")
@@ -187,28 +190,25 @@ struct ContentView: View {
                 .frame(width: 140)
                 .labelsHidden()
 
-                // Show Source
                 Button {
                     showSource.toggle()
                 } label: {
                     Label("Source", systemImage: "curlybraces")
                 }
                 .buttonStyle(.bordered)
-                .help("Toggle source editor")
 
-                Divider()
-                    .frame(height: 20)
+                Divider().frame(height: 20)
 
-                // Zoom controls
+                // Auto-fit
                 Button {
                     fitMode = true
-                    renderToken += 1  // trigger re-eval
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                 }
                 .buttonStyle(.bordered)
                 .help("Auto-fit to window")
 
+                // Zoom out
                 Button {
                     fitMode = false
                     zoomLevel = max(0.25, zoomLevel - 0.1)
@@ -222,6 +222,7 @@ struct ContentView: View {
                     .font(.system(.body, design: .monospaced))
                     .frame(width: 50)
 
+                // Zoom in
                 Button {
                     fitMode = false
                     zoomLevel = min(5.0, zoomLevel + 0.1)
@@ -240,7 +241,6 @@ struct ContentView: View {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.bordered)
-                .help("Export diagram")
 
                 Picker("", selection: $exportFormat) {
                     Text("SVG").tag("svg")
@@ -271,7 +271,6 @@ struct ContentView: View {
                         zoomLevel: zoomLevel,
                         fitMode: fitMode
                     )
-                    .id(renderToken)  // force update when renderToken changes
                     .frame(minWidth: 400, minHeight: 400)
                 }
             } else {
@@ -281,7 +280,6 @@ struct ContentView: View {
                     zoomLevel: zoomLevel,
                     fitMode: fitMode
                 )
-                .id(renderToken)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
@@ -293,10 +291,6 @@ struct ContentView: View {
             }
         }
         .frame(minWidth: 800, minHeight: 600)
-        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("MermaidRendered"))) { _ in
-            // Mermaid finished rendering SVG, bump token to trigger auto-fit
-            renderToken += 1
-        }
     }
 
     // MARK: - Export
