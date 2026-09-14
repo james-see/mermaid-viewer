@@ -43,6 +43,10 @@ struct MermaidWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         let html = buildHTML(source: source, theme: theme)
         webView.loadHTMLString(html, baseURL: nil)
+        // Apply zoom via WKWebView's native magnification
+        DispatchQueue.main.async {
+            webView.magnification = zoomLevel
+        }
     }
 
     private func buildHTML(source: String, theme: String) -> String {
@@ -56,8 +60,9 @@ struct MermaidWebView: NSViewRepresentable {
         <head>
         <meta charset="utf-8">
         <style>
-        body { margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; background: \(theme == "dark" ? "#1e1e1e" : "#fff"); overflow: auto; }
-        #diagram { display: inline-block; transform-origin: top center; }
+        body { margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; background: \(theme == "dark" ? "#1e1e1e" : "#fff"); }
+        #diagram { display: flex; justify-content: center; align-items: center; }
+        #diagram svg { max-width: 100%; height: auto; }
         #error { color: #d33; font-family: monospace; white-space: pre-wrap; max-width: 800px; padding: 20px; }
         </style>
         <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -122,7 +127,7 @@ struct ContentView: View {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                 }
                 .buttonStyle(.bordered)
-                .help("Fit to window")
+                .help("Reset zoom")
 
                 Button {
                     zoomLevel = max(0.25, zoomLevel - 0.1)
@@ -169,7 +174,7 @@ struct ContentView: View {
 
             Divider()
 
-            // Main content
+            // Main content — let WKWebView handle its own scrolling
             if showSource {
                 HSplitView {
                     ScrollView {
@@ -178,23 +183,12 @@ struct ContentView: View {
                             .padding(8)
                             .frame(minWidth: 300, minHeight: 400)
                     }
-                    ScrollView([.horizontal, .vertical]) {
-                        MermaidWebView(source: document.text, theme: theme, zoomLevel: $zoomLevel)
-                            .frame(minWidth: 400, minHeight: 400)
-                            .scaleEffect(zoomLevel)
-                            .frame(
-                                maxWidth: .infinity,
-                                maxHeight: .infinity,
-                                alignment: .top
-                            )
-                    }
+                    MermaidWebView(source: document.text, theme: theme, zoomLevel: $zoomLevel)
+                        .frame(minWidth: 400, minHeight: 400)
                 }
             } else {
-                ScrollView([.horizontal, .vertical]) {
-                    MermaidWebView(source: document.text, theme: theme, zoomLevel: $zoomLevel)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .scaleEffect(zoomLevel)
-                }
+                MermaidWebView(source: document.text, theme: theme, zoomLevel: $zoomLevel)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             if let err = exportError {
