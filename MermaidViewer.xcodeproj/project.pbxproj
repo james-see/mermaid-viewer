@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		70F98B42F9BD328E1FA584DB /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = 78B26B9A7288E8FE8985B24F /* AppIcon.icns */; };
 		A7181248F16A852EDB4A0C76 /* MermaidViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FBAD3DA3611FFF0A92172C3 /* MermaidViewerApp.swift */; };
 		C9546E9DD63E607791B90CD8 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69412DC14754E81D9361DEE7 /* ContentView.swift */; };
 /* End PBXBuildFile section */
@@ -14,6 +15,7 @@
 /* Begin PBXFileReference section */
 		2DB23A6AF8E39A3D58037661 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		69412DC14754E81D9361DEE7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		78B26B9A7288E8FE8985B24F /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		8FD4772AB004E86E2DFB9B09 /* MermaidViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MermaidViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9FBAD3DA3611FFF0A92172C3 /* MermaidViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidViewerApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -38,6 +40,7 @@
 		6E53FEEE6CE82510683C216B /* MermaidViewer */ = {
 			isa = PBXGroup;
 			children = (
+				78B26B9A7288E8FE8985B24F /* AppIcon.icns */,
 				69412DC14754E81D9361DEE7 /* ContentView.swift */,
 				2DB23A6AF8E39A3D58037661 /* Info.plist */,
 				9FBAD3DA3611FFF0A92172C3 /* MermaidViewerApp.swift */,
@@ -53,6 +56,7 @@
 			buildConfigurationList = 89EE0C725B8FAE155F9C78A9 /* Build configuration list for PBXNativeTarget "MermaidViewer" */;
 			buildPhases = (
 				045F60C27DE2E84F25EDFB1D /* Sources */,
+				2F1C5F9ADE7FFAEB48DABF16 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -98,6 +102,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		2F1C5F9ADE7FFAEB48DABF16 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				70F98B42F9BD328E1FA584DB /* AppIcon.icns in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		045F60C27DE2E84F25EDFB1D /* Sources */ = {
@@ -235,6 +250,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_ASSETCATALOG_CACHES = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -258,6 +274,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_ASSETCATALOG_CACHES = NO;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
