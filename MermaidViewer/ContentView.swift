@@ -41,40 +41,62 @@ class MermaidContainerView: NSView {
         }
     }
 
-    // Box-drawing state
     private var startPoint: NSPoint?
     private var currentRect: NSRect?
 
-    // Allow the overlay to handle box-zoom mouse events
     override func hitTest(_ point: NSPoint) -> NSView? {
         return self
     }
 
-    // MARK: - Scroll Wheel (the core fix)
+    // MARK: - Scroll Wheel
 
     override func scrollWheel(with event: NSEvent) {
         guard let webView = webView else { return }
 
         if event.modifierFlags.contains(.command) {
-            // Cmd+scroll = zoom from mouse point
+            // Cmd+scroll = zoom from mouse point via CSS transform
             let mousePoint = convert(event.locationInWindow, from: nil)
             let scaleFactor = event.deltaY > 0 ? 1.1 : 0.9
-            let currentZoom = webView.magnification
-            let newZoom = max(0.1, min(5.0, currentZoom * scaleFactor))
-            webView.setMagnification(newZoom, centeredAt: mousePoint)
+            // Get current zoom from JS
+            webView.evaluateJavaScript("window.__mermaidZoom || 1.0") { result, _ in
+                let currentZoom = result as? Double ?? 1.0
+                let newZoom = max(0.1, min(5.0, currentZoom * scaleFactor))
+                // Apply zoom via CSS transform, centered on mouse point
+                let js = """
+                (function() {
+                    var container = document.getElementById('diagram');
+                    if (!container) return;
+                    var svg = container.querySelector('svg');
+                    if (!svg) return;
+                    var rect = container.getBoundingClientRect();
+                    var mouseX = \(mousePoint.x);
+                    var mouseY = \(webView.bounds.height - mousePoint.y);
+                    var svgRect = svg.getBoundingClientRect();
+                    var cx = svgRect.left + svgRect.width / 2;
+                    var cy = svgRect.top + svgRect.height / 2;
+                    var dx = (cx - mouseX) * (\(newZoom) / \(currentZoom) - 1);
+                    var dy = (cy - mouseY) * (\(newZoom) / \(currentZoom) - 1);
+                    window.__mermaidZoom = \(newZoom);
+                    window.__mermaidPanX = (window.__mermaidPanX || 0) + dx;
+                    window.__mermaidPanY = (window.__mermaidPanY || 0) + dy;
+                    container.style.transform = 'translate(' + window.__mermaidPanX + 'px, ' + window.__mermaidPanY + 'px) scale(' + \(newZoom) + ')';
+                    container.style.transformOrigin = 'center center';
+                })();
+                """
+                webView.evaluateJavaScript(js, completionHandler: nil)
+            }
             return
         }
 
         if event.modifierFlags.contains(.shift) {
-            // Shift+scroll = horizontal scroll
-            // Access the WKWebView's internal scroll view
+            // Shift+scroll = horizontal pan
             guard let scrollView = webView.subviews.compactMap({ $0 as? NSScrollView }).first else {
                 super.scrollWheel(with: event)
                 return
             }
             let clipView = scrollView.contentView
             let currentOrigin = clipView.bounds.origin
-            let delta = event.deltaY * -10  // invert so scroll down = move right
+            let delta = event.deltaY * -10
             clipView.setBoundsOrigin(NSPoint(
                 x: currentOrigin.x + delta,
                 y: currentOrigin.y
@@ -154,15 +176,13 @@ struct MermaidWebView: NSViewRepresentable {
         let container = MermaidContainerView()
         container.wantsLayer = true
 
-        // Create webview
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.allowsMagnification = true
+        webView.allowsMagnification = false  // We handle zoom via CSS, not WKWebView magnification
         webView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(webView)
         container.webView = webView
 
-        // Pin webview to container
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: container.topAnchor),
             webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
@@ -174,7 +194,6 @@ struct MermaidWebView: NSViewRepresentable {
         context.coordinator.lastSource = source
         context.coordinator.lastTheme = theme
 
-        // Box zoom callback
         container.onBoxZoom = { [weak webView] rect in
             guard let webView = webView else { return }
             guard rect.width > 10, rect.height > 10 else { return }
@@ -183,14 +202,36 @@ struct MermaidWebView: NSViewRepresentable {
             let viewH = webView.bounds.height
             guard viewW > 0, viewH > 0 else { return }
 
-            let currentZoom = webView.magnification
+            // Calculate zoom factor to fit selected rect
             let scaleX = viewW / rect.width
             let scaleY = viewH / rect.height
             let zoomFactor = min(scaleX, scaleY)
-            let newZoom = max(0.1, min(5.0, currentZoom * zoomFactor))
 
-            let center = CGPoint(x: rect.midX, y: rect.midY)
-            webView.setMagnification(newZoom, centeredAt: center)
+            webView.evaluateJavaScript("window.__mermaidZoom || 1.0") { result, _ in
+                let currentZoom = result as? Double ?? 1.0
+                let newZoom = max(0.1, min(5.0, currentZoom * zoomFactor))
+                let center = CGPoint(x: rect.midX, y: webView.bounds.height - rect.midY)
+                webView.evaluateJavaScript("""
+                (function() {
+                    var container = document.getElementById('diagram');
+                    if (!container) return;
+                    var svg = container.querySelector('svg');
+                    if (!svg) return;
+                    var svgRect = svg.getBoundingClientRect();
+                    var cx = svgRect.left + svgRect.width / 2;
+                    var cy = svgRect.top + svgRect.height / 2;
+                    var mouseX = \(center.x);
+                    var mouseY = \(center.y);
+                    var dx = (cx - mouseX) * (\(newZoom) / \(currentZoom) - 1);
+                    var dy = (cy - mouseY) * (\(newZoom) / \(currentZoom) - 1);
+                    window.__mermaidZoom = \(newZoom);
+                    window.__mermaidPanX = (window.__mermaidPanX || 0) + dx;
+                    window.__mermaidPanY = (window.__mermaidPanY || 0) + dy;
+                    container.style.transform = 'translate(' + window.__mermaidPanX + 'px, ' + window.__mermaidPanY + 'px) scale(' + \(newZoom) + ')';
+                    container.style.transformOrigin = 'center center';
+                })();
+                """, completionHandler: nil)
+            }
         }
 
         loadHTML(webView: webView)
@@ -214,17 +255,28 @@ struct MermaidWebView: NSViewRepresentable {
             return
         }
 
-        // Only apply zoom if the SwiftUI zoomLevel differs from the webview's current magnification
-        // This prevents the updateNSView from fighting with mouse-based zoom
-        let currentMag = webView.magnification
-        let targetZoom = fitMode ? currentMag : zoomLevel  // Don't override if fitMode
-
+        // Apply zoom via CSS transform (not WKWebView magnification)
         if fitMode {
             context.coordinator.applyAutoFit(webView: webView)
-        } else if abs(currentMag - zoomLevel) > 0.01 {
-            // Zoom from center of the visible content
-            let center = CGPoint(x: webView.bounds.midX, y: webView.bounds.midY)
-            webView.setMagnification(zoomLevel, centeredAt: center)
+        } else {
+            // Check if zoom actually changed before applying
+            webView.evaluateJavaScript("window.__mermaidZoom || 1.0") { result, _ in
+                let currentZoom = result as? Double ?? 1.0
+                if abs(currentZoom - self.zoomLevel) > 0.01 {
+                    let js = """
+                    (function() {
+                        var container = document.getElementById('diagram');
+                        if (!container) return;
+                        window.__mermaidZoom = \(self.zoomLevel);
+                        window.__mermaidPanX = 0;
+                        window.__mermaidPanY = 0;
+                        container.style.transform = 'scale(\(self.zoomLevel))';
+                        container.style.transformOrigin = 'center center';
+                    })();
+                    """
+                    webView.evaluateJavaScript(js, completionHandler: nil)
+                }
+            }
         }
     }
 
@@ -240,8 +292,8 @@ struct MermaidWebView: NSViewRepresentable {
         <head>
         <meta charset="utf-8">
         <style>
-        body { margin: 0; padding: 0; background: \(bg); }
-        #diagram { display: flex; justify-content: center; align-items: flex-start; }
+        html, body { margin: 0; padding: 0; background: \(bg); width: 100%; height: 100%; overflow: auto; }
+        #diagram { display: flex; justify-content: center; align-items: center; min-height: 100vh; transform-origin: center center; transition: none; }
         #diagram svg { max-width: none; height: auto; }
         #error { color: #d33; font-family: monospace; white-space: pre-wrap; max-width: 800px; padding: 20px; }
         </style>
@@ -253,6 +305,9 @@ struct MermaidWebView: NSViewRepresentable {
         </div>
         <div id="error"></div>
         <script>
+        window.__mermaidZoom = 1.0;
+        window.__mermaidPanX = 0;
+        window.__mermaidPanY = 0;
         try {
             mermaid.initialize({ startOnLoad: true, theme: '\(theme)' });
         } catch (err) {
@@ -317,9 +372,19 @@ struct MermaidWebView: NSViewRepresentable {
                 let scaleY = viewH / svgH
                 let fitZoom = min(scaleX, scaleY) * 0.95
 
-                let center = CGPoint(x: webView.bounds.midX, y: webView.bounds.midY)
+                let applyJS = """
+                (function() {
+                    var container = document.getElementById('diagram');
+                    if (!container) return;
+                    window.__mermaidZoom = \(fitZoom);
+                    window.__mermaidPanX = 0;
+                    window.__mermaidPanY = 0;
+                    container.style.transform = 'scale(\(fitZoom))';
+                    container.style.transformOrigin = 'center center';
+                })();
+                """
                 DispatchQueue.main.async {
-                    webView.setMagnification(max(0.1, fitZoom), centeredAt: center)
+                    webView.evaluateJavaScript(applyJS, completionHandler: nil)
                 }
             }
         }
