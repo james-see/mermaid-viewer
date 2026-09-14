@@ -17,7 +17,8 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: MermaidViewer/Info.plist
         DEVELOPMENT_TEAM: ""
-        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "Developer ID Application"
         ENABLE_HARDENED_RUNTIME: YES
         INFOPLIST_KEY_NSHumanReadableCopyright: "MIT License"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
