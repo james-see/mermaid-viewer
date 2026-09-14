@@ -25,3 +25,4 @@ targets:
         SWIFT_VERSION: "5.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_ASSETCATALOG_CACHES: NO
+        CODE_SIGN_ENTITLEMENTS: MermaidViewer/MermaidViewer.entitlements

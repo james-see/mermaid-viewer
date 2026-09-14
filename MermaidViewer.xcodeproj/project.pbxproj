@@ -16,6 +16,7 @@
 		2DB23A6AF8E39A3D58037661 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		69412DC14754E81D9361DEE7 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		78B26B9A7288E8FE8985B24F /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		82CC57E6FC7507317701243C /* MermaidViewer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MermaidViewer.entitlements; sourceTree = "<group>"; };
 		8FD4772AB004E86E2DFB9B09 /* MermaidViewer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MermaidViewer.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9FBAD3DA3611FFF0A92172C3 /* MermaidViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MermaidViewerApp.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -43,6 +44,7 @@
 				78B26B9A7288E8FE8985B24F /* AppIcon.icns */,
 				69412DC14754E81D9361DEE7 /* ContentView.swift */,
 				2DB23A6AF8E39A3D58037661 /* Info.plist */,
+				82CC57E6FC7507317701243C /* MermaidViewer.entitlements */,
 				9FBAD3DA3611FFF0A92172C3 /* MermaidViewerApp.swift */,
 			);
 			path = MermaidViewer;
@@ -251,6 +253,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_ASSETCATALOG_CACHES = NO;
+				CODE_SIGN_ENTITLEMENTS = MermaidViewer/MermaidViewer.entitlements;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
@@ -276,6 +279,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_ASSETCATALOG_CACHES = NO;
+				CODE_SIGN_ENTITLEMENTS = MermaidViewer/MermaidViewer.entitlements;
 				CODE_SIGN_IDENTITY = "Developer ID Application";
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
