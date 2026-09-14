@@ -25,6 +25,76 @@ struct MermaidDocument: FileDocument {
     }
 }
 
+// MARK: - Box Zoom Overlay
+
+class BoxZoomOverlayView: NSView {
+    var onBoxZoom: ((NSRect) -> Void)?
+    var boxZoomMode: Bool = false {
+        didSet {
+            needsDisplay = true
+            // Change cursor
+            if boxZoomMode {
+                NSCursor.crosshair.set()
+            } else {
+                NSCursor.arrow.set()
+            }
+        }
+    }
+
+    private var startPoint: NSPoint?
+    private var currentRect: NSRect?
+
+    override var isFlipped: Bool { false }
+
+    // When box-zoom mode is off, pass all mouse events through to the WKWebView below
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        return boxZoomMode ? super.hitTest(point) : nil
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard boxZoomMode else { return }
+        startPoint = convert(event.locationInWindow, from: nil)
+        currentRect = NSRect(origin: startPoint!, size: .zero)
+        needsDisplay = true
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard boxZoomMode, let start = startPoint else { return }
+        let current = convert(event.locationInWindow, from: nil)
+        currentRect = NSRect(
+            x: min(start.x, current.x),
+            y: min(start.y, current.y),
+            width: abs(current.x - start.x),
+            height: abs(current.y - start.y)
+        )
+        needsDisplay = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard boxZoomMode else { return }
+        guard let rect = currentRect, rect.width > 5, rect.height > 5 else {
+            currentRect = nil
+            needsDisplay = true
+            return
+        }
+        onBoxZoom?(rect)
+        currentRect = nil
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard boxZoomMode, let rect = currentRect else { return }
+        // Semi-transparent fill
+        NSColor(calibratedRed: 0.2, green: 0.5, blue: 1, alpha: 0.15).setFill()
+        rect.fill()
+        // Border
+        NSColor(calibratedRed: 0.2, green: 0.5, blue: 1, alpha: 0.9).setStroke()
+        let path = NSBezierPath(rect: rect)
+        path.lineWidth = 1.5
+        path.stroke()
+    }
+}
+
 // MARK: - Mermaid WebView
 
 struct MermaidWebView: NSViewRepresentable {
@@ -32,24 +102,79 @@ struct MermaidWebView: NSViewRepresentable {
     let theme: String
     let zoomLevel: Double
     let fitMode: Bool
+    @Binding var boxZoomMode: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+
+        // Create webview
         let config = WKWebViewConfiguration()
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsMagnification = true
-        webView.navigationDelegate = context.coordinator
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(webView)
+
+        // Create overlay for box-zoom
+        let overlay = BoxZoomOverlayView()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.wantsLayer = true
+        container.addSubview(overlay)
+
+        // Pin both to container edges
+        NSLayoutConstraint.activate([
+            webView.topAnchor.constraint(equalTo: container.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: container.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            overlay.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
         context.coordinator.webView = webView
         context.coordinator.lastSource = source
         context.coordinator.lastTheme = theme
+
+        // Box zoom callback
+        overlay.onBoxZoom = { [weak webView] rect in
+            guard let webView = webView else { return }
+            guard rect.width > 10, rect.height > 10 else { return }
+
+            let viewW = webView.bounds.width
+            let viewH = webView.bounds.height
+            guard viewW > 0, viewH > 0 else { return }
+
+            // Current magnification
+            let currentZoom = webView.magnification
+
+            // How much more do we need to zoom to fit the selected rect into the full view?
+            let scaleX = viewW / rect.width
+            let scaleY = viewH / rect.height
+            let zoomFactor = min(scaleX, scaleY)
+            let newZoom = max(0.1, min(5.0, currentZoom * zoomFactor))
+
+            // Center point in webView coords (overlay and webview share same frame)
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            webView.setMagnification(newZoom, centeredAt: center)
+        }
+
         loadHTML(webView: webView)
-        return webView
+        return container
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
+    func updateNSView(_ container: NSView, context: Context) {
+        guard let webView = context.coordinator.webView else { return }
+
+        // Find overlay subview
+        let overlay = container.subviews.compactMap({ $0 as? BoxZoomOverlayView }).first
+        overlay?.boxZoomMode = boxZoomMode
+
         let sourceChanged = context.coordinator.lastSource != source
         let themeChanged = context.coordinator.lastTheme != theme
 
@@ -61,11 +186,12 @@ struct MermaidWebView: NSViewRepresentable {
             return
         }
 
-        // No reload — just apply zoom
+        // Apply zoom centered on view center (not top-left)
+        let center = CGPoint(x: webView.bounds.midX, y: webView.bounds.midY)
         if fitMode {
             context.coordinator.applyAutoFit(webView: webView)
         } else {
-            webView.magnification = zoomLevel
+            webView.setMagnification(zoomLevel, centeredAt: center)
         }
     }
 
@@ -115,12 +241,11 @@ struct MermaidWebView: NSViewRepresentable {
         var pendingFit: Bool = false
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            // After page loads, wait for Mermaid to render SVG, then auto-fit
             waitForRender(webView: webView, attempts: 0)
         }
 
         private func waitForRender(webView: WKWebView, attempts: Int) {
-            if attempts > 50 { return }  // ~10s timeout
+            if attempts > 50 { return }
             webView.evaluateJavaScript("document.querySelector('#diagram svg') !== null") { result, _ in
                 if let ready = result as? Bool, ready {
                     if self.pendingFit {
@@ -159,8 +284,9 @@ struct MermaidWebView: NSViewRepresentable {
                 let scaleY = viewH / svgH
                 let fitZoom = min(scaleX, scaleY) * 0.95
 
+                let center = CGPoint(x: webView.bounds.midX, y: webView.bounds.midY)
                 DispatchQueue.main.async {
-                    webView.magnification = max(0.1, fitZoom)
+                    webView.setMagnification(max(0.1, fitZoom), centeredAt: center)
                 }
             }
         }
@@ -177,6 +303,7 @@ struct ContentView: View {
     @State private var exportError: String?
     @State private var zoomLevel: Double = 1.0
     @State private var fitMode: Bool = true
+    @State private var boxZoomMode: Bool = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -232,6 +359,16 @@ struct ContentView: View {
                 .buttonStyle(.bordered)
                 .help("Zoom in")
 
+                // Box zoom toggle
+                Button {
+                    boxZoomMode.toggle()
+                } label: {
+                    Image(systemName: "rectangle.dashed.and.paperclip")
+                        .foregroundStyle(boxZoomMode ? Color.accentColor : Color.primary)
+                }
+                .buttonStyle(.bordered)
+                .help("Box zoom: draw a rectangle to zoom into that area")
+
                 Spacer()
 
                 // Export
@@ -269,7 +406,8 @@ struct ContentView: View {
                         source: document.text,
                         theme: theme,
                         zoomLevel: zoomLevel,
-                        fitMode: fitMode
+                        fitMode: fitMode,
+                        boxZoomMode: $boxZoomMode
                     )
                     .frame(minWidth: 400, minHeight: 400)
                 }
@@ -278,7 +416,8 @@ struct ContentView: View {
                     source: document.text,
                     theme: theme,
                     zoomLevel: zoomLevel,
-                    fitMode: fitMode
+                    fitMode: fitMode,
+                    boxZoomMode: $boxZoomMode
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
