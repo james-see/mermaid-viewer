@@ -69,6 +69,11 @@ jobs:
           mkdir -p dist
           cp -R "build/Build/Products/Release/MermaidViewer.app" "dist/MermaidViewer.app"
 
+          # Re-sign with secure timestamp (required for notarization)
+          codesign --force --deep --sign "Developer ID Application: James Campbell (529AKJCKRC)" \
+            --options runtime --timestamp --entitlements MermaidViewer/MermaidViewer.entitlements \
+            "dist/MermaidViewer.app"
+
           # Verify signing
           codesign --verify --deep --strict --verbose=2 "dist/MermaidViewer.app" 2>&1 || true
 
