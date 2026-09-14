@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mermaid Viewer — Native macOS app for .mmd diagrams</title>
+    <meta name="description" content="A native macOS app for opening, previewing, and exporting Mermaid diagrams (.mmd files). Built with SwiftUI + WebKit.">
+    <meta name="keywords" content="mermaid, mmd, macos, swift, diagram, flowchart, viewer, exporter, svg, png, pdf">
+    <meta property="og:title" content="Mermaid Viewer — Native macOS app for .mmd diagrams">
+    <meta property="og:description" content="Open, preview, and export Mermaid diagrams on macOS. Built with SwiftUI + WebKit.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://james-see.github.io/mermaid-viewer/">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --accent: #2dd4bf;
+            --accent-dark: #14b8a6;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+        .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+
+        /* Hero */
+        .hero {
+            text-align: center;
+            padding: 80px 24px 60px;
+            background: linear-gradient(180deg, #0d1117 0%, #161b22 100%);
+            border-bottom: 1px solid var(--border);
+        }
+        .hero-icon {
+            width: 96px; height: 96px;
+            border-radius: 22px;
+            margin: 0 auto 24px;
+            background: linear-gradient(135deg, #2dd4bf 0%, #3b82f6 100%);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 48px;
+        }
+        .hero h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            margin-bottom: 12px;
+        }
+        .hero h1 .accent { color: var(--accent); }
+        .hero p {
+            font-size: 1.2rem;
+            color: var(--muted);
+            max-width: 560px;
+            margin: 0 auto 32px;
+        }
+        .hero-badges {
+            display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+            margin-bottom: 32px;
+        }
+        .badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+        .badge svg { width: 16px; height: 16px; }
+        .hero-cta {
+            display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #0d1117;
+        }
+        .btn-primary:hover { background: var(--accent-dark); transform: translateY(-1px); }
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { border-color: var(--accent); }
+
+        /* Features */
+        .features {
+            padding: 64px 0;
+        }
+        .features h2 {
+            text-align: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 48px;
+            letter-spacing: -0.02em;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 24px;
+        }
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            transition: border-color 0.2s;
+        }
+        .feature-card:hover { border-color: var(--accent); }
+        .feature-card .icon {
+            font-size: 1.8rem;
+            margin-bottom: 12px;
+        }
+        .feature-card h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .feature-card p {
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+
+        /* Zoom section */
+        .zoom-section {
+            padding: 64px 0;
+            border-top: 1px solid var(--border);
+        }
+        .zoom-section h2 {
+            text-align: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .zoom-section .subtitle {
+            text-align: center;
+            color: var(--muted);
+            margin-bottom: 40px;
+        }
+        .zoom-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .zoom-table th, .zoom-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .zoom-table th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .zoom-table td:first-child {
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.9rem;
+            color: var(--accent);
+        }
+        .zoom-table td:last-child { color: var(--muted); }
+
+        /* Install */
+        .install {
+            padding: 64px 0;
+            border-top: 1px solid var(--border);
+        }
+        .install h2 {
+            text-align: center;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 32px;
+        }
+        .code-block {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px 24px;
+            overflow-x: auto;
+            margin-bottom: 24px;
+        }
+        .code-block pre {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-size: 0.88rem;
+            color: var(--text);
+            white-space: pre;
+        }
+        .code-block .comment { color: var(--muted); }
+
+        /* Footer */
+        footer {
+            padding: 32px 0;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 600px) {
+            .hero h1 { font-size: 2rem; }
+            .hero p { font-size: 1rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="hero-icon">🧜‍♀️</div>
+    <h1>Mermaid <span class="accent">Viewer</span></h1>
+    <p>A native macOS app for opening, previewing, and exporting Mermaid diagrams (<code>.mmd</code> files). Built with SwiftUI + WebKit.</p>
+    <div class="hero-badges">
+        <span class="badge">⬜ macOS 14+</span>
+        <span class="badge">🧜‍♀️ Mermaid 11</span>
+        <span class="badge">⚡ SwiftUI</span>
+        <span class="badge">📦 Open Source</span>
+    </div>
+    <div class="hero-cta">
+        <a href="https://github.com/james-see/mermaid-viewer" class="btn btn-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.21 3.44 9.63 8.21 11.19.6.11.82-.26.82-.58 0-.29-.01-1.05-.02-2.06-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.96 0-1.32.47-2.4 1.24-3.24-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.24a11.5 11.5 0 0 1 6 0c2.29-1.56 3.3-1.24 3.3-1.24.66 1.66.24 2.88.12 3.18.77.84 1.24 1.92 1.24 3.24 0 4.63-2.81 5.65-5.49 5.95.43.37.81 1.1.81 2.22 0 1.6-.02 2.89-.02 3.29 0 .32.22.7.83.58A12.01 12.01 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z"/></svg>
+            View on GitHub
+        </a>
+        <a href="#install" class="btn btn-secondary">Installation</a>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="features">
+    <div class="container">
+        <h2>Features</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="icon">🖼️</div>
+                <h3>Live Preview</h3>
+                <p>Renders Mermaid 11 diagrams in-app using WebKit. See changes instantly as you edit.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🎨</div>
+                <h3>Light & Dark Themes</h3>
+                <p>Toggle between Mermaid's default and dark themes with a single click.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📝</div>
+                <h3>Source Editor</h3>
+                <p>Split view to edit <code>.mmd</code> source alongside the rendered diagram.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔍</div>
+                <h3>Zoom & Pan</h3>
+                <p>Toolbar zoom, ⌘+scroll from cursor, Shift+scroll to pan, box-draw zoom to area.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📤</div>
+                <h3>Export</h3>
+                <p>Convert diagrams to SVG, PNG, or PDF via mermaid-cli (<code>mmdc</code>).</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📂</div>
+                <h3>Default App</h3>
+                <p>Registers as the system default handler for <code>.mmd</code> files. Double-click to open.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Zoom Controls -->
+<section class="zoom-section">
+    <div class="container">
+        <h2>Zoom & Pan Controls</h2>
+        <p class="subtitle">Multiple ways to navigate your diagrams</p>
+        <table class="zoom-table">
+            <thead>
+                <tr>
+                    <th>Action</th>
+                    <th>Input</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td>Zoom in</td><td>Toolbar + button or ⌘+scroll up</td></tr>
+                <tr><td>Zoom out</td><td>Toolbar − button or ⌘+scroll down</td></tr>
+                <tr><td>Auto-fit</td><td>Toolbar fit button</td></tr>
+                <tr><td>Pan vertically</td><td>Scroll</td></tr>
+                <tr><td>Pan horizontally</td><td>Shift+scroll</td></tr>
+                <tr><td>Box zoom</td><td>Toggle box-zoom mode, then click-drag a rectangle</td></tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<!-- Install -->
+<section class="install" id="install">
+    <div class="container">
+        <h2>Installation</h2>
+        <div class="code-block">
+<pre><span class="comment"># Clone and build</span>
+git clone https://github.com/james-see/mermaid-viewer.git
+cd mermaid-viewer
+xcodegen generate
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -project MermaidViewer.xcodeproj \
+  -scheme MermaidViewer \
+  -configuration Release build \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO
+cp -R ~/Library/Developer/Xcode/DerivedData/MermaidViewer-*/Build/Products/Release/MermaidViewer.app /Applications/
+
+<span class="comment"># Set as default for .mmd files</span>
+brew install duti
+duti -s com.james-see.mermaidviewer .mmd all
+
+<span class="comment"># Enable export (optional)</span>
+npm install -g @mermaid-js/mermaid-cli</pre>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer>
+    <p>MIT License · <a href="https://github.com/james-see/mermaid-viewer">GitHub</a> · Built by <a href="https://github.com/james-see">James Campbell</a></p>
+</footer>
+
+</body>
+</html>
