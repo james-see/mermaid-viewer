@@ -25,14 +25,14 @@ struct MermaidDocument: FileDocument {
     }
 }
 
-// MARK: - Box Zoom Overlay
+// MARK: - Container View (handles scroll + zoom events)
 
-class BoxZoomOverlayView: NSView {
+class MermaidContainerView: NSView {
+    weak var webView: WKWebView?
     var onBoxZoom: ((NSRect) -> Void)?
     var boxZoomMode: Bool = false {
         didSet {
             needsDisplay = true
-            // Change cursor
             if boxZoomMode {
                 NSCursor.crosshair.set()
             } else {
@@ -41,25 +41,69 @@ class BoxZoomOverlayView: NSView {
         }
     }
 
+    // Box-drawing state
     private var startPoint: NSPoint?
     private var currentRect: NSRect?
 
-    override var isFlipped: Bool { false }
-
-    // When box-zoom mode is off, pass all mouse events through to the WKWebView below
+    // Allow the overlay to handle box-zoom mouse events
     override func hitTest(_ point: NSPoint) -> NSView? {
-        return boxZoomMode ? super.hitTest(point) : nil
+        return self
     }
 
+    // MARK: - Scroll Wheel (the core fix)
+
+    override func scrollWheel(with event: NSEvent) {
+        guard let webView = webView else { return }
+
+        if event.modifierFlags.contains(.command) {
+            // Cmd+scroll = zoom from mouse point
+            let mousePoint = convert(event.locationInWindow, from: nil)
+            let scaleFactor = event.deltaY > 0 ? 1.1 : 0.9
+            let currentZoom = webView.magnification
+            let newZoom = max(0.1, min(5.0, currentZoom * scaleFactor))
+            webView.setMagnification(newZoom, centeredAt: mousePoint)
+            return
+        }
+
+        if event.modifierFlags.contains(.shift) {
+            // Shift+scroll = horizontal scroll
+            // Access the WKWebView's internal scroll view
+            guard let scrollView = webView.subviews.compactMap({ $0 as? NSScrollView }).first else {
+                super.scrollWheel(with: event)
+                return
+            }
+            let clipView = scrollView.contentView
+            let currentOrigin = clipView.bounds.origin
+            let delta = event.deltaY * -10  // invert so scroll down = move right
+            clipView.setBoundsOrigin(NSPoint(
+                x: currentOrigin.x + delta,
+                y: currentOrigin.y
+            ))
+            scrollView.reflectScrolledClipView(clipView)
+            return
+        }
+
+        // Default: pass to WKWebView for normal vertical scroll
+        super.scrollWheel(with: event)
+    }
+
+    // MARK: - Box Zoom Mouse Events
+
     override func mouseDown(with event: NSEvent) {
-        guard boxZoomMode else { return }
+        guard boxZoomMode else {
+            super.mouseDown(with: event)
+            return
+        }
         startPoint = convert(event.locationInWindow, from: nil)
         currentRect = NSRect(origin: startPoint!, size: .zero)
         needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard boxZoomMode, let start = startPoint else { return }
+        guard boxZoomMode, let start = startPoint else {
+            super.mouseDragged(with: event)
+            return
+        }
         let current = convert(event.locationInWindow, from: nil)
         currentRect = NSRect(
             x: min(start.x, current.x),
@@ -71,23 +115,21 @@ class BoxZoomOverlayView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard boxZoomMode else { return }
-        guard let rect = currentRect, rect.width > 5, rect.height > 5 else {
-            currentRect = nil
-            needsDisplay = true
+        guard boxZoomMode else {
+            super.mouseUp(with: event)
             return
         }
-        onBoxZoom?(rect)
+        if let rect = currentRect, rect.width > 5, rect.height > 5 {
+            onBoxZoom?(rect)
+        }
         currentRect = nil
         needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard boxZoomMode, let rect = currentRect else { return }
-        // Semi-transparent fill
         NSColor(calibratedRed: 0.2, green: 0.5, blue: 1, alpha: 0.15).setFill()
         rect.fill()
-        // Border
         NSColor(calibratedRed: 0.2, green: 0.5, blue: 1, alpha: 0.9).setStroke()
         let path = NSBezierPath(rect: rect)
         path.lineWidth = 1.5
@@ -109,7 +151,7 @@ struct MermaidWebView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSView {
-        let container = NSView()
+        let container = MermaidContainerView()
         container.wantsLayer = true
 
         // Create webview
@@ -118,23 +160,14 @@ struct MermaidWebView: NSViewRepresentable {
         webView.allowsMagnification = true
         webView.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(webView)
+        container.webView = webView
 
-        // Create overlay for box-zoom
-        let overlay = BoxZoomOverlayView()
-        overlay.translatesAutoresizingMaskIntoConstraints = false
-        overlay.wantsLayer = true
-        container.addSubview(overlay)
-
-        // Pin both to container edges
+        // Pin webview to container
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: container.topAnchor),
             webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
             webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            overlay.topAnchor.constraint(equalTo: container.topAnchor),
-            overlay.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            overlay.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            overlay.trailingAnchor.constraint(equalTo: container.trailingAnchor),
         ])
 
         context.coordinator.webView = webView
@@ -142,7 +175,7 @@ struct MermaidWebView: NSViewRepresentable {
         context.coordinator.lastTheme = theme
 
         // Box zoom callback
-        overlay.onBoxZoom = { [weak webView] rect in
+        container.onBoxZoom = { [weak webView] rect in
             guard let webView = webView else { return }
             guard rect.width > 10, rect.height > 10 else { return }
 
@@ -150,16 +183,12 @@ struct MermaidWebView: NSViewRepresentable {
             let viewH = webView.bounds.height
             guard viewW > 0, viewH > 0 else { return }
 
-            // Current magnification
             let currentZoom = webView.magnification
-
-            // How much more do we need to zoom to fit the selected rect into the full view?
             let scaleX = viewW / rect.width
             let scaleY = viewH / rect.height
             let zoomFactor = min(scaleX, scaleY)
             let newZoom = max(0.1, min(5.0, currentZoom * zoomFactor))
 
-            // Center point in webView coords (overlay and webview share same frame)
             let center = CGPoint(x: rect.midX, y: rect.midY)
             webView.setMagnification(newZoom, centeredAt: center)
         }
@@ -169,11 +198,10 @@ struct MermaidWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        guard let webView = context.coordinator.webView else { return }
+        guard let webView = context.coordinator.webView,
+              let container = container as? MermaidContainerView else { return }
 
-        // Find overlay subview
-        let overlay = container.subviews.compactMap({ $0 as? BoxZoomOverlayView }).first
-        overlay?.boxZoomMode = boxZoomMode
+        container.boxZoomMode = boxZoomMode
 
         let sourceChanged = context.coordinator.lastSource != source
         let themeChanged = context.coordinator.lastTheme != theme
@@ -186,11 +214,16 @@ struct MermaidWebView: NSViewRepresentable {
             return
         }
 
-        // Apply zoom centered on view center (not top-left)
-        let center = CGPoint(x: webView.bounds.midX, y: webView.bounds.midY)
+        // Only apply zoom if the SwiftUI zoomLevel differs from the webview's current magnification
+        // This prevents the updateNSView from fighting with mouse-based zoom
+        let currentMag = webView.magnification
+        let targetZoom = fitMode ? currentMag : zoomLevel  // Don't override if fitMode
+
         if fitMode {
             context.coordinator.applyAutoFit(webView: webView)
-        } else {
+        } else if abs(currentMag - zoomLevel) > 0.01 {
+            // Zoom from center of the visible content
+            let center = CGPoint(x: webView.bounds.midX, y: webView.bounds.midY)
             webView.setMagnification(zoomLevel, centeredAt: center)
         }
     }
