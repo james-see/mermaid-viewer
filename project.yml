@@ -1,0 +1,24 @@
+name: MermaidViewer
+options:
+  bundleIdPrefix: com.james-see
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+targets:
+  MermaidViewer:
+    type: application
+    platform: macOS
+    sources:
+      - MermaidViewer
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.james-see.mermaidviewer
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: MermaidViewer/Info.plist
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        INFOPLIST_KEY_NSHumanReadableCopyright: "MIT License"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        SWIFT_VERSION: "5.0"
